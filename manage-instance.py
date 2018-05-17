@@ -17,23 +17,54 @@ parser.add_argument(
 parser.add_argument(
     '-instance_id', nargs=1, required=False,
     help="Instance ID of the AWS EC2 instance")
+parser.add_argument(
+    '-instancename', nargs=1, required=False,
+    help="Instance name of the AWS EC2 instance")
 args = parser.parse_args()
 
 ec2 = boto3.client('ec2')
+ec2_resource = boto3.resource('ec2')
+all_vpcs = ec2.describe_vpcs()
+
+
+def get_all_vpc_ids():
+    all_vpc_ids = []
+    for vpc in all_vpcs['Vpcs']:
+        all_vpc_ids.append(vpc["VpcId"])
+    return(all_vpc_ids)
+
+
+def get_instance_id_by_name(instance_name):
+    instance_ids = []
+    queryable_vpc_ids = get_all_vpc_ids()
+    for queryable_vpc_id in queryable_vpc_ids:
+        vpc = ec2_resource.Vpc(queryable_vpc_id)
+        for ec2_instance in vpc.instances.all():
+            if ec2_instance.tags:
+                for tag in ec2_instance.tags:
+                    if tag['Key'] == 'Name' and tag['Value'] == instance_name:
+                        instance_ids.append(ec2_instance.instance_id)
+    return instance_ids
+
 
 # Check if filename is given as an input
 if args.filename:
     with open(args.filename[0]) as f:
-        Instance_IDs = f.readlines()
-        Instance_IDs = [x.strip() for x in Instance_IDs]
+        instance_ids = f.readlines()
+        instance_ids = [x.strip() for x in instance_ids]
     print(
         "Parsing input file, these instances will be affected:",
-        Instance_IDs)
+        instance_ids)
 elif args.instance_id:
-    Instance_IDs = args.instance_id
+    instance_ids = args.instance_id
     print(
-        "No input file found, this instance will be affected:",
-        Instance_IDs)
+        "No input file found, this instance will be affected:\n",
+        instance_ids)
+elif args.instancename:
+    instance_ids = get_instance_id_by_name(args.instancename[0])
+    print(
+        "Name parameter was called, this ID will be affected:\n",
+        instance_ids)
 else:
     print(
         "Nor input file nor instance ID has been found. \n"
@@ -47,7 +78,7 @@ else:
 if args.action[0] == 'START':
     # Do a dryrun first to verify permissions
     try:
-        ec2.start_instances(InstanceIds=Instance_IDs, DryRun=True)
+        ec2.start_instances(InstanceIds=instance_ids, DryRun=True)
     except ClientError as e:
         if 'DryRunOperation' not in str(e):
             raise
@@ -55,7 +86,7 @@ if args.action[0] == 'START':
     # Dry run succeeded, run start_instances without dryrun
     try:
         response = ec2.start_instances(
-            InstanceIds=Instance_IDs, DryRun=False)
+            InstanceIds=instance_ids, DryRun=False)
         print(response)
     except ClientError as e:
         print(e)
@@ -64,7 +95,7 @@ if args.action[0] == 'START':
 elif args.action[0] == 'STOP':
     # Do a dryrun first to verify permissions
     try:
-        ec2.stop_instances(InstanceIds=Instance_IDs, DryRun=True)
+        ec2.stop_instances(InstanceIds=instance_ids, DryRun=True)
     except ClientError as e:
         if 'DryRunOperation' not in str(e):
             raise
@@ -72,12 +103,12 @@ elif args.action[0] == 'STOP':
     # Dry run succeeded, call stop_instances without dryrun
     try:
         response = ec2.stop_instances(
-            InstanceIds=Instance_IDs, DryRun=False)
+            InstanceIds=instance_ids, DryRun=False)
         print(response)
     except ClientError as e:
         print(e)
 
 elif args.action[0] == 'QUERY':
-    InstanceStatuses = ec2.describe_instance_status(InstanceIds=Instance_IDs)
-    for InstanceId in InstanceStatuses['InstanceStatuses']:
-        print(InstanceId['InstanceId'], " *** ", InstanceId['InstanceState'])
+    instance_statuses = ec2.describe_instance_status(InstanceIds=instance_ids)
+    for instance_id in instance_statuses['InstanceStatuses']:
+        print(instance_id['InstanceId'], " *** ", instance_id['InstanceState'])

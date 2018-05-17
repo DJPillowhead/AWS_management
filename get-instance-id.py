@@ -14,7 +14,7 @@ parser.add_argument(
     "If you don't know the vpc id, use list-vpcs.py.")
 parser.add_argument(
     '-action', nargs=1, required=True,
-    choices=['LIST', 'QUERY', 'LISTALL'],
+    choices=['QUERY', 'LISTALL'],
     help="LIST if you want to list all instances in a VPC, "
     "or QUERY if you want to get the id of an instance knowing its name."
     "LISTALL lists all instances - even the ones without a name.")
@@ -23,23 +23,22 @@ args = parser.parse_args()
 ec2 = boto3.resource('ec2')
 vpc = ec2.Vpc(args.vpc[0])
 
-if args.action[0] == "LIST":
-    for i in vpc.instances.all():
-        if i.tags:
-            for tag in i.tags:
-                if tag['Key'] == 'Name':
-                    print(tag['Value'], " --- ", i.instance_id)
 
-elif args.action[0] == 'QUERY':
-    for i in vpc.instances.all():
-        if i.tags:
-            for tag in i.tags:
-                if tag['Key'] == 'Name':
-                    if tag['Value'] == args.name[0]:
-                        print(
-                            "The id of the instance named: ",
-                            tag['Value'], " is: ",
-                            i.instance_id)
+def get_instance_id_by_name(instance_name):
+    instance_ids = []
+    for ec2_instance in vpc.instances.all():
+        if ec2_instance.tags:
+            for tag in ec2_instance.tags:
+                if tag['Key'] == 'Name' and tag['Value'] == instance_name:
+                    instance_ids.append(ec2_instance.instance_id)
+    return instance_ids
+
+
+if args.action[0] == 'QUERY':
+    if args.name:
+        print(get_instance_id_by_name(args.name[0]))
+    else:
+        print("QUERY is only possible with adding the -name parameter too.")
 
 elif args.action[0] == 'LISTALL':
     for i in vpc.instances.all():
